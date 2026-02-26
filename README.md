@@ -1,4 +1,3 @@
-[Run_final_V2.py](https://github.com/user-attachments/files/25589426/Run_final_V2.py)
 import asyncio
 import json
 import os
@@ -15,6 +14,7 @@ CHAIN_ID = 137
 MIN_SPREAD_PROFIT = 0.02      # 2% de lucro alvo
 SCAN_INTERVAL = 3             # segundos
 DRY_RUN = False               # se quiser só simular, podemos usar depois
+
 
 class SpreadArbBot:
     def __init__(self):
@@ -47,7 +47,8 @@ class SpreadArbBot:
             # Filtra mercados ativos e com orderbook ligado
             markets = [
                 m for m in data
-                if m.get("active") and m.get("enableOrderBook")
+                if m.get("active")
+                and m.get("enableOrderBook")
                 and m.get("clobTokenIds")
             ]
             return markets
@@ -89,8 +90,9 @@ class SpreadArbBot:
                 return None
 
             current_stake = self.bankroll * 0.10
+
             yes_vol = float(r_yes["asks"][0]["size"]) * yes_ask
-no_vol = float(r_no["asks"][0]["size"]) * no_ask
+            no_vol = float(r_no["asks"][0]["size"]) * no_ask
             max_liquidity = min(yes_vol, no_vol)
 
             if max_liquidity < current_stake:
@@ -102,8 +104,7 @@ no_vol = float(r_no["asks"][0]["size"]) * no_ask
                 f"Lucro: {profit_pct:.2f}% | Stake: ${current_stake:.2f}"
             )
             return yes_ask, no_ask, current_stake, t_yes, t_no
-        except Exception as e:
-            print(f"[ERRO CHECK_SPREAD] {e}")
+        except Exception as e:print(f"[ERRO CHECK-SPREAD] {e}")
             return None
 
     def execute(self, m_slug, yes_p, no_p, stake, t_yes, t_no):
@@ -130,6 +131,7 @@ no_vol = float(r_no["asks"][0]["size"]) * no_ask
                 if opp:
                     self.execute(m.get("slug", "sem-slug"), *opp)
             await asyncio.sleep(SCAN_INTERVAL)
+
 
 if __name__ == "__main__":
     bot = SpreadArbBot()
