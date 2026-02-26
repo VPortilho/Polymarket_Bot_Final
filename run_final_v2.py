@@ -13,7 +13,7 @@ HOST = "https://clob.polymarket.com/"
 CHAIN_ID = 137
 MIN_SPREAD_PROFIT = 0.02      # 2% de lucro alvo
 SCAN_INTERVAL = 3             # segundos
-DRY_RUN = False               # se quiser só simular, podemos usar depois
+DRY_RUN = False               # se quiser só simular
 
 
 class SpreadArbBot:
@@ -29,7 +29,11 @@ class SpreadArbBot:
             exit(1)
 
         try:
-            self.client = ClobClient(host=HOST, key=PRIVATE_KEY, chain_id=CHAIN_ID)
+            self.client = ClobClient(
+                host=HOST,
+                key=PRIVATE_KEY,
+                chain_id=CHAIN_ID
+            )
             print("[LIVE] Carteira conectada! 🟢")
         except Exception as e:
             print(f"[ERRO CONEXÃO] {e}")
@@ -37,29 +41,30 @@ class SpreadArbBot:
 
     def get_markets(self):
         """
-        Busca mercados diretamente da CLOB, já com clobTokenIds.
+        Busca mercados diretamente da CLOB.
         """
         try:
             url = "https://clob.polymarket.com/markets"
             r = requests.get(url, timeout=5)
             data = r.json()
 
-            # Filtra mercados ativos e com orderbook ligado
             markets = [
                 m for m in data
                 if m.get("active")
                 and m.get("enableOrderBook")
                 and m.get("clobTokenIds")
             ]
+
             return markets
+
         except Exception as e:
             print(f"[ERRO API] {e}")
             return []
 
     def check_spread(self, market):
         try:
-            # clobTokenIds vem como string JSON
             clob_ids = market.get("clobTokenIds", "[]")
+
             if isinstance(clob_ids, str):
                 clob_ids = json.loads(clob_ids)
 
@@ -69,11 +74,11 @@ class SpreadArbBot:
             t_yes = clob_ids[0]
             t_no = clob_ids[1]
 
-            # Orderbook de cada lado
             r_yes = requests.get(
                 f"https://clob.polymarket.com/book?token_id={t_yes}",
                 timeout=2
             ).json()
+
             r_no = requests.get(
                 f"https://clob.polymarket.com/book?token_id={t_no}",
                 timeout=2
@@ -86,6 +91,7 @@ class SpreadArbBot:
             no_ask = float(r_no["asks"][0]["price"])
 
             cost = yes_ask + no_ask
+
             if cost >= (1.00 - MIN_SPREAD_PROFIT):
                 return None
 
@@ -99,37 +105,63 @@ class SpreadArbBot:
                 return None
 
             profit_pct = (1 - cost) * 100
+
             print(
                 f"[OPORTUNIDADE] {market.get('slug', 'sem-slug')} | "
                 f"Lucro: {profit_pct:.2f}% | Stake: ${current_stake:.2f}"
             )
+
             return yes_ask, no_ask, current_stake, t_yes, t_no
-        except Exception as e:print(f"[ERRO CHECK-SPREAD] {e}")
+
+        except Exception as e:
+            print(f"[ERRO CHECK-SPREAD] {e}")
             return None
 
     def execute(self, m_slug, yes_p, no_p, stake, t_yes, t_no):
         print(f"[EXEC] 🚀 {m_slug}")
+
         try:
+            if DRY_RUN:
+                print(f"[SIMULAÇÃO] YES {yes_p} | NO {no_p}")
+                return
+
             o1 = self.client.create_and_post_order(
-                OrderArgs(price=yes_p, size=stake / yes_p, side=BUY, token_id=t_yes)
+                OrderArgs(
+                    price=yes_p,
+                    size=stake / yes_p,
+                    side=BUY,
+                    token_id=t_yes
+                )
             )
-            print(f" ✅ YES: {o1}")
+
+            print(f"✅ YES: {o1}")
+
             o2 = self.client.create_and_post_order(
-                OrderArgs(price=no_p, size=stake / no_p, side=BUY, token_id=t_no)
+                OrderArgs(
+                    price=no_p,
+                    size=stake / no_p,
+                    side=BUY,
+                    token_id=t_no
+                )
             )
-            print(f" ✅ NO: {o2}")
+
+            print(f"✅ NO: {o2}")
+
             self.trades += 1
+
         except Exception as e:
             print(f"[ERRO EXEC] {e}")
 
     async def run(self):
         while True:
             mkts = self.get_markets()
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan {len(mkts)}...")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan {len(mkts)} mercados")
+
             for m in mkts:
                 opp = self.check_spread(m)
                 if opp:
                     self.execute(m.get("slug", "sem-slug"), *opp)
+
             await asyncio.sleep(SCAN_INTERVAL)
 
 
